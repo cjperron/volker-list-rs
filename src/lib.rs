@@ -71,7 +71,7 @@ impl<T: Sized> Drop for List<T> {
     fn drop(&mut self) {
         let mut current = self.head;
         // Basicamente avanzo el cursor, dropeando todos los nodos, hasta que encuentro el None. (el final de la lista)
-        while let Some(node) = current { 
+        while let Some(node) = current {
             current = unsafe {
                 let next = (*node).next;
                 drop(Box::from_raw(node));
@@ -241,7 +241,7 @@ impl<T: Sized> List<T> {
     /// assert_eq!(list.peek_head(), Some(&3));
     /// ```
     pub fn peek_head(&self) -> Option<&T> {
-        self.head.map(|node| unsafe { &(*node).value })
+        self.head.map(|node| unsafe { &(*node).value }) // Lo convierto en una referencia normal con .map() 😀
     }
 
     /// Returns a reference to the value at the tail of the list.
@@ -257,7 +257,7 @@ impl<T: Sized> List<T> {
     /// assert_eq!(list.peek_tail(), Some(&3));
     /// ```
     pub fn peek_tail(&self) -> Option<&T> {
-        self.tail.map(|node| unsafe { &(*node).value })
+        self.tail.map(|node| unsafe { &(*node).value }) // Lo convierto en una referencia normal con .map() 😀
     }
 
     /// Removes and returns the value at the head of the list.
@@ -280,17 +280,19 @@ impl<T: Sized> List<T> {
         T: Clone,
     {
         if let Some(node) = self.head {
-            let value = unsafe { (*node).value.clone() };
+            let value = unsafe { (*node).value.clone() }; // tiene que ser clone, sino no me permite mover la referencia mientras la lista posea ese valor...
             self.head = unsafe { (*node).next };
             if let Some(next_node) = self.head {
+                // Si el siguiente nodo es valido...
                 unsafe {
                     (*next_node).prev = None;
                 }
             } else {
+                // Sino es valido, se vacio la lista 😀
                 self.tail = None;
             }
             unsafe {
-                drop(Box::from_raw(node));
+                drop(Box::from_raw(node)); // equivalente de hacer un free()
             }
             self.len -= 1;
             Some(value)
@@ -393,7 +395,7 @@ impl<T: Sized + Display + Copy> Display for List<T> {
         let mut current = &self.head;
         while let Some(node) = current {
             // ! Medio desagradable la cantidad de dereferencias, pero es lo que hay.
-            write!(f, "{} <-> ", unsafe { (*(*node)).value })?; 
+            write!(f, "{} <-> ", unsafe { (*(*node)).value })?;
             current = unsafe { &(*(*node)).next };
         }
         write!(f, "None")
@@ -403,9 +405,9 @@ impl<T: Sized + Display + Copy> Display for List<T> {
 /// # Nota
 /// El iterador de la lista es un iterador simple, que no permite modificar la lista mientras se itera.
 /// Para modificar la lista mientras se itera, se debe utilizar el iterador mutable.
-/// 
+///
 /// En particular necesita un lifetime asociado al lifetime del generico T, sino no se podria saber si el iterador esta iterando por referencias validas.
-/// La gracia es forzar esto en tiempo de compilacion en vez de usando RefCell<>, u otros smart pointers.
+/// La gracia es forzar esto en tiempo de compilacion en vez de usando RefCell<T>, u otros smart pointers.
 pub struct ListIterator<'a, T: Sized> {
     current: Option<*const Node<T>>,
     marker: std::marker::PhantomData<&'a T>,
@@ -426,9 +428,9 @@ impl<'a, T: Sized> Iterator for ListIterator<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.current.map(|node| {
             //? Se de antemano que el puntero es valido (garantizado por Box<>), por lo que puedo hacer un unsafe dereference.
-            let node = unsafe { &*node }; 
-            //? `next` es *mut porque next() toma una referencia exclusiva al iterador. self.current en cambio es *const, asi que tengo que hacer la conversion in place para que sea valida la siguiente "referenciacion".  
-            self.current = node.next.map(|next| next as *const Node<T>); 
+            let node = unsafe { &*node };
+            //? `next` es *mut porque next() toma una referencia exclusiva al iterador. self.current en cambio es *const, asi que tengo que hacer la conversion in place para que sea valida la siguiente "referenciacion".
+            self.current = node.next.map(|next| next as *const Node<T>);
             &node.value
         })
     }
@@ -477,7 +479,7 @@ impl<'a, T: Sized> DoubleEndedIterator for ListIteratorMut<'a, T> {
 }
 
 impl<'a, T: Sized> ListIterator<'a, T> {
-    /// Returns a reference to the value at the current position of the iterator.
+    /// Returns a reference to the value at the current position of the iterator. (ya existe peekable, pero bueno, lo hago yo por si las dudas...)
     pub fn peek(&self) -> Option<&T> {
         self.current.map(|node| {
             let node = unsafe { &*node };
@@ -488,13 +490,13 @@ impl<'a, T: Sized> ListIterator<'a, T> {
     pub fn at_end(&self) -> bool {
         self.current
             .map(|node| unsafe { (*node).next.is_none() })
-            .unwrap_or(true)
+            .unwrap_or(true) // Si es None, current es None, por lo que esta en el final...
     }
     /// Returns `true` if the iterator is at the beginning of the list.
     pub fn at_beggining(&self) -> bool {
         self.current
             .map(|node| unsafe { (*node).prev.is_none() })
-            .unwrap_or(true)
+            .unwrap_or(true) // Si es None, significa que tengo la lista vacia, caso que esta en el final y en el principio.
     }
 }
 
@@ -527,13 +529,13 @@ impl<'a, T: Sized> ListIteratorMut<'a, T> {
             .unwrap_or(true)
     }
     /// Inserts a new element after the current position of the iterator.
-    /// 
+    ///
     /// Example:
     /// ```
     /// use tp2_rs::{List, list};
-    /// 
+    ///
     /// let mut list = list!(1, 2, 3, 4, 5, 7);
-    /// 
+    ///
     /// {
     ///     let mut list_iter = list.iter_mut();
     ///     list_iter.insert_after(10);
@@ -569,27 +571,27 @@ impl<'a, T: Sized> ListIteratorMut<'a, T> {
         }
         self.list.len += 1;
     }
-    
+
     /// Inserts a new element before the current position of the iterator.
-    /// 
+    ///
     /// Example:
     /// ```
     /// use tp2_rs::{List, list};
-    /// 
+    ///
     /// let mut list = list!(1, 2, 3, 4, 5, 7);
     ///     
     /// {
     ///     let mut list_iter = list.iter_mut();
     ///     list_iter.next();
     ///     list_iter.insert_before(23);
-	///     list_iter.next();
-	///     list_iter.insert_before(10);
-	/// }
-	/// assert_eq!(list.iter().cloned().collect::<Vec<_>>(), vec![1, 23, 2, 10, 3, 4, 5, 7]);
-	/// ```
+    ///     list_iter.next();
+    ///     list_iter.insert_before(10);
+    /// }
+    /// assert_eq!(list.iter().cloned().collect::<Vec<_>>(), vec![1, 23, 2, 10, 3, 4, 5, 7]);
+    /// ```
     pub fn insert_before(&mut self, value: T) {
         // El nodo actual es valido
-        if let Some(node) = self.current { 
+        if let Some(node) = self.current {
             // Creo espacio para el nuevo nodo
             let new_node = Box::into_raw(Box::new(Node {
                 value,
@@ -754,5 +756,49 @@ mod tests {
         assert_eq!(list.pop_head(), None);
         assert!(list.is_empty());
     }
-}
+    #[test]
+    fn test_iter_insert_after() {
+        let mut list = list!(1, 2, 3, 4, 5, 7);
+        {
+            let mut list_iter = list.iter_mut();
+            list_iter.insert_after(10);
+        }
+        assert_eq!(
+            list.iter().cloned().collect::<Vec<_>>(),
+            vec![1, 10, 2, 3, 4, 5, 7]
+        );
+    }
+    #[test]
+    fn test_iter_insert_before() {
+        let mut list = list!(1, 2, 3, 4, 5, 7);
+        {
+            let mut list_iter = list.iter_mut();
+            list_iter.next();
+            list_iter.insert_before(23);
+            list_iter.next();
+            list_iter.insert_before(10);
+        }
+        assert_eq!(
+            list.iter().cloned().collect::<Vec<_>>(),
+            vec![1, 23, 2, 10, 3, 4, 5, 7]
+        );
+    }
 
+    #[test]
+    fn test_list_insert_before_and_after() {
+        let mut list = list!(1, 2, 3, 4, 5, 7);
+        {
+            let mut list_iter = list.iter_mut();
+            list_iter.next();
+            list_iter.insert_before(23);
+            list_iter.next();
+            list_iter.insert_before(10);
+            list_iter.next();
+            list_iter.insert_after(10);
+        }
+        assert_eq!(
+            list.iter().cloned().collect::<Vec<_>>(),
+            vec![1, 23, 2, 10, 3, 4, 10, 5, 7]
+        );
+    }
+}
